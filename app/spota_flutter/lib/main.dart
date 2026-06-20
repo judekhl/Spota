@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'config/supabase_env.dart';
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 import 'screens/parking_lots_list_screen.dart';
 import 'screens/operator_dashboard_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await dotenv.load(fileName: '.env', isOptional: true);
+  if (SupabaseEnv.isConfigured) {
+    await Supabase.initialize(
+      url: SupabaseEnv.url,
+      publishableKey: SupabaseEnv.anonKey,
+    );
+  }
+
   runApp(const SpotaApp());
 }
 

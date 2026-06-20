@@ -1,14 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../data/demo_lots.dart';
+import '../data/lot_repository.dart';
+import '../models/parking_lot.dart';
 import '../theme/app_colors.dart';
 import '../widgets/map_background.dart';
 import '../widgets/parking_lot_card.dart';
 import '../widgets/premium_search_bar.dart';
 import 'parking_lot_details_screen.dart';
 
-class ParkingLotsListScreen extends StatelessWidget {
+class ParkingLotsListScreen extends StatefulWidget {
   const ParkingLotsListScreen({super.key});
+
+  @override
+  State<ParkingLotsListScreen> createState() => _ParkingLotsListScreenState();
+}
+
+class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
+  List<ParkingLot> _lots = [];
+
+  @override
+  void initState() {
+    super.initState();
+    LotRepository.fetchAll().then((lots) {
+      if (mounted) setState(() => _lots = lots);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +87,10 @@ class ParkingLotsListScreen extends StatelessWidget {
             maxChildSize: 0.93,
             snap: true,
             snapSizes: const [0.13, 0.48, 0.93],
-            builder: (_, controller) => _LotSheet(controller: controller),
+            builder: (_, controller) => _LotSheet(
+              controller: controller,
+              lots: _lots,
+            ),
           ),
         ],
       ),
@@ -106,7 +125,8 @@ class _FloatingIconBtn extends StatelessWidget {
 
 class _LotSheet extends StatelessWidget {
   final ScrollController controller;
-  const _LotSheet({required this.controller});
+  final List<ParkingLot> lots;
+  const _LotSheet({required this.controller, required this.lots});
 
   @override
   Widget build(BuildContext context) {
@@ -175,7 +195,7 @@ class _LotSheet extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          '${demoLots.length} lots',
+                          '${lots.length} lots',
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -197,7 +217,7 @@ class _LotSheet extends StatelessWidget {
               delegate: SliverChildBuilderDelegate(
                 (context, i) {
                   if (i.isOdd) return const SizedBox(height: 14);
-                  final lot = demoLots[i ~/ 2];
+                  final lot = lots[i ~/ 2];
                   return ParkingLotCard(
                     lot: lot,
                     onTap: () => Navigator.push(
@@ -206,7 +226,7 @@ class _LotSheet extends StatelessWidget {
                     ),
                   );
                 },
-                childCount: demoLots.length * 2 - 1,
+                childCount: lots.isEmpty ? 0 : lots.length * 2 - 1,
               ),
             ),
           ),

@@ -41,6 +41,23 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <!--
+    Stub for passkeys_web, a transitive dependency of supabase_flutter.
+    Spota does not use passkeys; this prevents a startup crash caused by
+    passkeys_web calling PasskeyAuthenticator.init() at plugin registration.
+  -->
+  <script>
+    window.PasskeyAuthenticator = {
+      init: function () {},
+      register: function () { return Promise.reject(new Error('passkeys not used')); },
+      login: function () { return Promise.reject(new Error('passkeys not used')); },
+      cancelCurrentAuthenticatorOperation: function () {},
+      isUserVerifyingPlatformAuthenticatorAvailable: function () { return Promise.resolve(undefined); },
+      isConditionalMediationAvailable: function () { return Promise.resolve(undefined); },
+      hasPasskeySupport: function () { return false; }
+    };
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
