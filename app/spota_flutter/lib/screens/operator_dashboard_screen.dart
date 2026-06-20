@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../data/demo_lots.dart';
+import '../data/lot_repository.dart';
 import '../models/parking_lot.dart';
 import '../theme/app_colors.dart';
 import '../widgets/metric_card.dart';
@@ -10,7 +10,6 @@ class _EditableLot {
   final String id;
   final String name;
   final String address;
-  final String imageUrl;
   final int totalSpaces;
   int availableSpaces;
   final String price;
@@ -20,7 +19,6 @@ class _EditableLot {
     required this.id,
     required this.name,
     required this.address,
-    required this.imageUrl,
     required this.totalSpaces,
     required this.availableSpaces,
     required this.price,
@@ -36,23 +34,29 @@ class OperatorDashboardScreen extends StatefulWidget {
 }
 
 class _OperatorDashboardScreenState extends State<OperatorDashboardScreen> {
-  late final List<_EditableLot> _lots;
+  List<_EditableLot> _lots = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _lots = demoLots
-        .map((l) => _EditableLot(
-              id: l.id,
-              name: l.name,
-              address: l.address,
-              imageUrl: l.imageUrl,
-              totalSpaces: l.totalSpaces,
-              availableSpaces: l.availableSpaces,
-              price: l.price,
-              isOpen: l.isOpen,
-            ))
-        .toList();
+    LotRepository.fetchAll().then((lots) {
+      if (!mounted) return;
+      setState(() {
+        _lots = lots
+            .map((l) => _EditableLot(
+                  id: l.id,
+                  name: l.name,
+                  address: l.address,
+                  totalSpaces: l.totalSpaces,
+                  availableSpaces: l.availableSpaces,
+                  price: l.price,
+                  isOpen: l.isOpen,
+                ))
+            .toList();
+        _loading = false;
+      });
+    });
   }
 
   LotStatus _status(_EditableLot l) {
@@ -85,11 +89,11 @@ class _OperatorDashboardScreenState extends State<OperatorDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Good morning,',
+                        'Welcome back,',
                         style: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary),
                       ),
                       Text(
-                        'Demo Operator',
+                        'Operator Panel',
                         style: GoogleFonts.inter(
                           fontSize: 22,
                           fontWeight: FontWeight.w700,
@@ -122,90 +126,108 @@ class _OperatorDashboardScreenState extends State<OperatorDashboardScreen> {
             ),
           ),
 
-          // KPI metrics
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(left: 2, bottom: 12),
-                    child: Text(
-                      'Overview',
-                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+          if (_loading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_lots.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.local_parking_outlined, size: 48, color: AppColors.textMuted),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No lots found',
+                      style: GoogleFonts.inter(fontSize: 16, color: AppColors.textSecondary),
                     ),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: MetricCard(
-                          label: 'Available',
-                          value: '$_totalAvailable',
-                          icon: Icons.local_parking_rounded,
-                          accentColor: AppColors.primary,
-                        ),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            // KPI metrics
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, bottom: 12),
+                      child: Text(
+                        'Overview',
+                        style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: MetricCard(
-                          label: 'Total Spaces',
-                          value: '$_totalSpaces',
-                          icon: Icons.grid_view_rounded,
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: MetricCard(
+                            label: 'Available',
+                            value: '$_totalAvailable',
+                            icon: Icons.local_parking_rounded,
+                            accentColor: AppColors.primary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: MetricCard(
-                          label: 'Lots Open',
-                          value: '$_openCount / ${_lots.length}',
-                          icon: Icons.store_mall_directory_outlined,
-                          accentColor: _openCount > 0 ? AppColors.primary : AppColors.closed,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: MetricCard(
+                            label: 'Total Spaces',
+                            value: '$_totalSpaces',
+                            icon: Icons.grid_view_rounded,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: MetricCard(
+                            label: 'Lots Open',
+                            value: '$_openCount / ${_lots.length}',
+                            icon: Icons.store_mall_directory_outlined,
+                            accentColor: _openCount > 0 ? AppColors.primary : AppColors.closed,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // Section label
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 28, 18, 12),
-              child: Text(
-                'My Lots',
-                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            // Section label
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 28, 18, 12),
+                child: Text(
+                  'My Lots',
+                  style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
               ),
             ),
-          ),
 
-          // Lot control cards
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 48),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  if (i.isOdd) return const SizedBox(height: 14);
-                  final lot = _lots[i ~/ 2];
-                  final status = _status(lot);
-                  return _LotControlCard(
-                    lot: lot,
-                    status: status,
-                    onDecrement: lot.isOpen && lot.availableSpaces > 0
-                        ? () => setState(() => lot.availableSpaces--)
-                        : null,
-                    onIncrement: lot.isOpen && lot.availableSpaces < lot.totalSpaces
-                        ? () => setState(() => lot.availableSpaces++)
-                        : null,
-                    onToggle: () => setState(() => lot.isOpen = !lot.isOpen),
-                  );
-                },
-                childCount: _lots.length * 2 - 1,
+            // Lot control cards
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 48),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    if (i.isOdd) return const SizedBox(height: 14);
+                    final lot = _lots[i ~/ 2];
+                    final status = _status(lot);
+                    return _LotControlCard(
+                      lot: lot,
+                      status: status,
+                      onDecrement: null,
+                      onIncrement: null,
+                      onToggle: () => setState(() => lot.isOpen = !lot.isOpen),
+                    );
+                  },
+                  childCount: _lots.length * 2 - 1,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -244,33 +266,17 @@ class _LotControlCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Thumbnail with lot name overlay
-            SizedBox(
-              height: 100,
+            // Header banner with lot name
+            Container(
+              height: 80,
               width: double.infinity,
+              color: statusColor.withValues(alpha: 0.12),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    lot.imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: statusColor.withValues(alpha: 0.15),
-                      child: Center(child: Icon(Icons.local_parking_rounded, color: statusColor, size: 36)),
-                    ),
-                  ),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Color(0xCC000000)],
-                        stops: [0.3, 1.0],
-                      ),
-                    ),
-                  ),
+                  Center(child: Icon(Icons.local_parking_rounded, color: statusColor.withValues(alpha: 0.3), size: 48)),
                   Positioned(
-                    bottom: 12,
+                    bottom: 10,
                     left: 14,
                     right: 14,
                     child: Row(
@@ -278,7 +284,7 @@ class _LotControlCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             lot.name,
-                            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white),
+                            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),

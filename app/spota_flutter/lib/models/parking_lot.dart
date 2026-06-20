@@ -1,5 +1,15 @@
 enum LotStatus { available, limited, full, closed }
 
+enum DataConfidence { recentlyUpdated, estimated, unknown }
+
+extension DataConfidenceLabel on DataConfidence {
+  String get label => switch (this) {
+    DataConfidence.recentlyUpdated => 'Recently updated',
+    DataConfidence.estimated       => 'Estimated',
+    DataConfidence.unknown         => 'Unknown',
+  };
+}
+
 class ParkingLot {
   final String id;
   final String operatorId;
@@ -15,6 +25,7 @@ class ParkingLot {
   final String openHours;
   final String imageUrl;
   final String lastUpdated;
+  final DateTime? updatedAt;
 
   const ParkingLot({
     required this.id,
@@ -31,6 +42,7 @@ class ParkingLot {
     required this.openHours,
     required this.imageUrl,
     required this.lastUpdated,
+    this.updatedAt,
   });
 
   LotStatus get status {
@@ -38,5 +50,13 @@ class ParkingLot {
     if (availableSpaces == 0) return LotStatus.full;
     if (availableSpaces / totalSpaces < 0.2) return LotStatus.limited;
     return LotStatus.available;
+  }
+
+  DataConfidence get confidence {
+    if (updatedAt == null) return DataConfidence.unknown;
+    final age = DateTime.now().difference(updatedAt!);
+    if (age.inHours < 2)  return DataConfidence.recentlyUpdated;
+    if (age.inHours < 72) return DataConfidence.estimated;
+    return DataConfidence.unknown;
   }
 }

@@ -19,9 +19,10 @@ abstract final class LotRepository {
   }
 
   static ParkingLot _fromRow(Map<String, dynamic> r) {
-    final lat = (r['latitude'] as num).toDouble();
-    final lon = (r['longitude'] as num).toDouble();
+    final lat = (r['latitude'] as num?)?.toDouble() ?? 0.0;
+    final lon = (r['longitude'] as num?)?.toDouble() ?? 0.0;
     final isOpen = r['is_open'] as bool? ?? false;
+    final updatedAt = _parseDate(r['updated_at'] as String?);
     return ParkingLot(
       id: r['id'] as String,
       operatorId: r['operator_id'] as String? ?? '',
@@ -29,15 +30,25 @@ abstract final class LotRepository {
       address: r['address'] as String? ?? '',
       latitude: lat,
       longitude: lon,
-      totalSpaces: r['total_spaces'] as int,
-      availableSpaces: r['available_spaces'] as int,
+      totalSpaces: (r['total_spaces'] as int?) ?? 0,
+      availableSpaces: (r['available_spaces'] as int?) ?? 0,
       price: r['price'] as String? ?? '',
       isOpen: isOpen,
       distanceLabel: _distanceLabel(lat, lon),
       openHours: isOpen ? 'Open now' : 'Currently closed',
       imageUrl: '',
       lastUpdated: _timeAgo(r['updated_at'] as String?),
+      updatedAt: updatedAt,
     );
+  }
+
+  static DateTime? _parseDate(String? iso) {
+    if (iso == null) return null;
+    try {
+      return DateTime.parse(iso).toLocal();
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _distanceLabel(double lat, double lon) {
@@ -54,7 +65,7 @@ abstract final class LotRepository {
     if (iso == null) return 'Unknown';
     try {
       final diff = DateTime.now().difference(DateTime.parse(iso).toLocal());
-      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 1) return 'just now';
       if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
       if (diff.inHours < 24) return '${diff.inHours}h ago';
       return '${diff.inDays}d ago';

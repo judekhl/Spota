@@ -1,22 +1,93 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../data/report_repository.dart';
 import '../models/parking_lot.dart';
 import '../theme/app_colors.dart';
+import '../widgets/confidence_badge.dart';
 import '../widgets/status_badge.dart';
 
-class ParkingLotDetailsScreen extends StatelessWidget {
+class ParkingLotDetailsScreen extends StatefulWidget {
   final ParkingLot lot;
   const ParkingLotDetailsScreen({super.key, required this.lot});
 
+  @override
+  State<ParkingLotDetailsScreen> createState() => _ParkingLotDetailsScreenState();
+}
+
+class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
+  bool _submitting = false;
+  String? _latestReportValue;
+  DateTime? _latestReportAt;
+
+  ParkingLot get lot => widget.lot;
+
+  bool get _hasValidCoords => lot.latitude != 0.0 && lot.longitude != 0.0;
+
   Future<void> _openWaze() async {
-    final uri = Uri.parse('https://waze.com/ul?ll=${lot.latitude},${lot.longitude}&navigate=yes');
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!_hasValidCoords) return;
+    final uri = Uri.parse('https://www.waze.com/ul?ll=${lot.latitude},${lot.longitude}&navigate=yes');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
   }
 
   Future<void> _openGoogleMaps() async {
+    if (!_hasValidCoords) return;
     final uri = Uri.parse('https://maps.google.com/?q=${lot.latitude},${lot.longitude}');
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
+  }
+
+  Future<void> _submitReport(String value) async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await ReportRepository.submit(lotId: lot.id, reportValue: value);
+      if (!mounted) return;
+      setState(() {
+        _latestReportValue = value;
+        _latestReportAt = DateTime.now();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thanks for your report!'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Report submit error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not submit report. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  String _reportLabel(String value) => switch (value) {
+    'empty'       => 'Empty',
+    'some_spots'  => 'Some spots',
+    'almost_full' => 'Almost full',
+    'full'        => 'Full',
+    _             => value,
+  };
+
+  String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   @override
@@ -56,7 +127,6 @@ class ParkingLotDetailsScreen extends StatelessWidget {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => _HeroFallback(statusColor: statusColor),
                     ),
-                    // Gradient for text legibility
                     const DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -67,7 +137,6 @@ class ParkingLotDetailsScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Name + address over the image
                     Positioned(
                       bottom: 20,
                       left: 20,
@@ -141,35 +210,23 @@ class ParkingLotDetailsScreen extends StatelessWidget {
                 const SizedBox(height: 22),
 
                 // Info tiles
-                _InfoTile(icon: Icons.access_time_rounded,   label: 'Hours',        value: lot.openHours),
-                _InfoTile(icon: Icons.near_me_rounded,       label: 'Distance',     value: '${lot.distanceLabel} away'),
-                _InfoTile(icon: Icons.update_rounded,        label: 'Last updated', value: lot.lastUpdated),
+                _InfoTile(icon: Icons.access_time_rounded, label: 'Hours',        value: lot.openHours),
+                _InfoTile(icon: Icons.near_me_rounded,     label: 'Distance',     value: '${lot.distanceLabel} away'),
+                _InfoTile(icon: Icons.update_rounded,      label: 'Last updated', value: lot.lastUpdated),
+                _ConfidenceTile(confidence: lot.confidence),
 
                 const SizedBox(height: 28),
                 const Divider(color: AppColors.border),
                 const SizedBox(height: 22),
 
+                // Get directions
                 Text(
                   'Get directions',
                   style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 14),
 
-                if (lot.isOpen) ...[
-                  _DirectionButton(
-                    label: 'Navigate with Waze',
-                    badge: 'W',
-                    color: const Color(0xFF05C4EF),
-                    onTap: _openWaze,
-                  ),
-                  const SizedBox(height: 12),
-                  _DirectionButton(
-                    label: 'Open in Google Maps',
-                    badge: 'G',
-                    color: const Color(0xFF4285F4),
-                    onTap: _openGoogleMaps,
-                  ),
-                ] else
+                if (!lot.isOpen) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -189,10 +246,131 @@ class ParkingLotDetailsScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+                ],
+                if (_hasValidCoords) ...[
+                  _DirectionButton(
+                    label: 'Navigate with Waze',
+                    badge: 'W',
+                    color: const Color(0xFF05C4EF),
+                    onTap: _openWaze,
+                  ),
+                  const SizedBox(height: 12),
+                  _DirectionButton(
+                    label: 'Open in Google Maps',
+                    badge: 'G',
+                    color: const Color(0xFF4285F4),
+                    onTap: _openGoogleMaps,
+                  ),
+                ] else
+                  Text(
+                    'No coordinates available for navigation.',
+                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
+                  ),
+
+                const SizedBox(height: 28),
+                const Divider(color: AppColors.border),
+                const SizedBox(height: 22),
+
+                // Report section
+                Text(
+                  'Report what you see',
+                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Help other drivers know the real situation',
+                  style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 14),
+                _ReportGrid(submitting: _submitting, onReport: _submitReport),
+                if (_latestReportValue != null && _latestReportAt != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Latest user report: ${_reportLabel(_latestReportValue!)} · ${_timeAgo(_latestReportAt!)}',
+                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ],
               ]),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ReportGrid extends StatelessWidget {
+  final bool submitting;
+  final void Function(String) onReport;
+  const _ReportGrid({required this.submitting, required this.onReport});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _ReportButton(label: 'Empty',       icon: Icons.check_circle_outline_rounded, color: const Color(0xFF16A34A), value: 'empty',       submitting: submitting, onTap: onReport)),
+            const SizedBox(width: 10),
+            Expanded(child: _ReportButton(label: 'Some spots',  icon: Icons.directions_car_outlined,      color: const Color(0xFF2563EB), value: 'some_spots',  submitting: submitting, onTap: onReport)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(child: _ReportButton(label: 'Almost full', icon: Icons.warning_amber_rounded,        color: const Color(0xFFD97706), value: 'almost_full', submitting: submitting, onTap: onReport)),
+            const SizedBox(width: 10),
+            Expanded(child: _ReportButton(label: 'Full',        icon: Icons.block_rounded,                color: const Color(0xFFDC2626), value: 'full',        submitting: submitting, onTap: onReport)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ReportButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final String value;
+  final bool submitting;
+  final void Function(String) onTap;
+  const _ReportButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.value,
+    required this.submitting,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: submitting ? null : () => onTap(value),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: submitting ? 0.5 : 1.0,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: color),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -276,6 +454,40 @@ class _InfoTile extends StatelessWidget {
             children: [
               Text(label, style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
               Text(value,  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConfidenceTile extends StatelessWidget {
+  final DataConfidence confidence;
+  const _ConfidenceTile({required this.confidence});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(Icons.verified_outlined, size: 18, color: AppColors.textSecondary),
+          ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Data confidence', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted)),
+              const SizedBox(height: 3),
+              ConfidenceBadge(confidence: confidence),
             ],
           ),
         ],

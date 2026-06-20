@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:latlong2/latlong.dart';
 import '../data/lot_repository.dart';
 import '../models/parking_lot.dart';
 import '../theme/app_colors.dart';
-import '../widgets/map_background.dart';
 import '../widgets/parking_lot_card.dart';
 import '../widgets/premium_search_bar.dart';
 import 'parking_lot_details_screen.dart';
@@ -17,12 +19,17 @@ class ParkingLotsListScreen extends StatefulWidget {
 
 class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
   List<ParkingLot> _lots = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     LotRepository.fetchAll().then((lots) {
-      if (mounted) setState(() => _lots = lots);
+      if (!mounted) return;
+      setState(() {
+        _lots = lots;
+        _loading = false;
+      });
     });
   }
 
@@ -32,8 +39,54 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Fake map — full screen
-          const Positioned.fill(child: MapBackground()),
+          // Real OpenStreetMap with Supabase lot markers
+          Positioned.fill(
+            child: FlutterMap(
+              options: const MapOptions(
+                initialCenter: LatLng(32.794, 34.989),
+                initialZoom: 13.5,
+                minZoom: 10,
+                maxZoom: 18,
+                interactionOptions: InteractionOptions(
+                  flags: InteractiveFlag.drag |
+                      InteractiveFlag.pinchZoom |
+                      InteractiveFlag.pinchMove |
+                      InteractiveFlag.doubleTapZoom |
+                      InteractiveFlag.flingAnimation,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  subdomains: const ['a', 'b', 'c'],
+                  userAgentPackageName: 'com.spota.app',
+                  tileProvider: CancellableNetworkTileProvider(),
+                ),
+                MarkerLayer(
+                  markers: _lots
+                      .where((l) => l.latitude != 0.0 && l.longitude != 0.0)
+                      .map((lot) => Marker(
+                            point: LatLng(lot.latitude, lot.longitude),
+                            width: 36,
+                            height: 36,
+                            child: GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ParkingLotDetailsScreen(lot: lot),
+                                ),
+                              ),
+                              child: _MapPin(status: lot.status),
+                            ),
+                          ))
+                      .toList(),
+                ),
+                const RichAttributionWidget(
+                  attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+                ),
+              ],
+            ),
+          ),
 
           // Floating header: branding + search bar
           Positioned(
@@ -90,6 +143,7 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
             builder: (_, controller) => _LotSheet(
               controller: controller,
               lots: _lots,
+              loading: _loading,
             ),
           ),
         ],
@@ -123,10 +177,45 @@ class _FloatingIconBtn extends StatelessWidget {
   }
 }
 
+class _MapPin extends StatelessWidget {
+  final LotStatus status;
+  const _MapPin({required this.status});
+
+  Color get _color => switch (status) {
+    LotStatus.available => const Color(0xFF16A34A),
+    LotStatus.limited   => const Color(0xFFD97706),
+    LotStatus.full      => const Color(0xFFDC2626),
+    LotStatus.closed    => const Color(0xFF6B7280),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: _color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2.5),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.22), blurRadius: 6, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: const Center(
+        child: Text(
+          'P',
+          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, height: 1),
+        ),
+      ),
+    );
+  }
+}
+
 class _LotSheet extends StatelessWidget {
   final ScrollController controller;
   final List<ParkingLot> lots;
-  const _LotSheet({required this.controller, required this.lots});
+  final bool loading;
+  const _LotSheet({required this.controller, required this.lots, required this.loading});
 
   @override
   Widget build(BuildContext context) {
@@ -210,26 +299,47 @@ class _LotSheet extends StatelessWidget {
             ),
           ),
 
-          // Lot cards
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  if (i.isOdd) return const SizedBox(height: 14);
-                  final lot = lots[i ~/ 2];
-                  return ParkingLotCard(
-                    lot: lot,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => ParkingLotDetailsScreen(lot: lot)),
+          // Lot cards / loading / empty
+          if (loading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (lots.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.local_parking_outlined, size: 48, color: AppColors.textMuted),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No lots found',
+                      style: GoogleFonts.inter(fontSize: 16, color: AppColors.textSecondary),
                     ),
-                  );
-                },
-                childCount: lots.isEmpty ? 0 : lots.length * 2 - 1,
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    if (i.isOdd) return const SizedBox(height: 14);
+                    final lot = lots[i ~/ 2];
+                    return ParkingLotCard(
+                      lot: lot,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => ParkingLotDetailsScreen(lot: lot)),
+                      ),
+                    );
+                  },
+                  childCount: lots.length * 2 - 1,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

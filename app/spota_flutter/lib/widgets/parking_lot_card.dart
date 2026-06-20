@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/parking_lot.dart';
 import '../theme/app_colors.dart';
+import 'confidence_badge.dart';
 import 'status_badge.dart';
 
 class ParkingLotCard extends StatelessWidget {
@@ -172,6 +173,8 @@ class _CardContent extends StatelessWidget {
                   style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
                 ),
               const Spacer(),
+              ConfidenceBadge(confidence: lot.confidence, small: true),
+              const SizedBox(width: 6),
               const Icon(Icons.update_rounded, size: 13, color: AppColors.textMuted),
               const SizedBox(width: 4),
               Text(
