@@ -209,17 +209,7 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                 ),
                 const SizedBox(height: 22),
 
-                // Info tiles
-                _InfoTile(icon: Icons.access_time_rounded, label: 'Hours',        value: lot.openHours),
-                _InfoTile(icon: Icons.near_me_rounded,     label: 'Distance',     value: '${lot.distanceLabel} away'),
-                _InfoTile(icon: Icons.update_rounded,      label: 'Last updated', value: lot.lastUpdated),
-                _ConfidenceTile(confidence: lot.confidence),
-
-                const SizedBox(height: 28),
-                const Divider(color: AppColors.border),
-                const SizedBox(height: 22),
-
-                // Get directions
+                // Get directions — shown immediately after KPI row
                 Text(
                   'Get directions',
                   style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
@@ -272,6 +262,16 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                 const Divider(color: AppColors.border),
                 const SizedBox(height: 22),
 
+                // Info tiles
+                _InfoTile(icon: Icons.access_time_rounded, label: 'Hours',        value: lot.openHours),
+                _InfoTile(icon: Icons.near_me_rounded,     label: 'Distance',     value: '${lot.distanceLabel} away'),
+                _InfoTile(icon: Icons.update_rounded,      label: 'Last updated', value: lot.lastUpdated),
+                _ConfidenceTile(confidence: lot.confidence),
+
+                const SizedBox(height: 28),
+                const Divider(color: AppColors.border),
+                const SizedBox(height: 22),
+
                 // Report section
                 Text(
                   'Report what you see',
@@ -283,6 +283,11 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                   style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 14),
+                Text(
+                  'What do you see right now?',
+                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 10),
                 _ReportGrid(submitting: _submitting, onReport: _submitReport),
                 if (_latestReportValue != null && _latestReportAt != null) ...[
                   const SizedBox(height: 10),
