@@ -1,12 +1,16 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:latlong2/latlong.dart' hide Path;
 import '../data/destinations.dart';
 import '../data/lot_repository.dart';
 import '../models/parking_lot.dart';
+import '../models/place_suggestion.dart';
+import '../services/place_search_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/parking_lot_card.dart';
 import 'parking_lot_details_screen.dart';
@@ -22,6 +26,7 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
   List<ParkingLot> _lots = [];
   bool _loading = true;
   Destination? _selectedDestination;
+  LatLng? _userLocation;
   final MapController _mapController = MapController();
 
   @override
@@ -34,6 +39,8 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
         _loading = false;
       });
     });
+    // Request location after first frame so MapController is wired up.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchUserLocation());
   }
 
   @override
@@ -91,14 +98,77 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
     return sorted;
   }
 
+  Future<void> _fetchUserLocation() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        _showLocationFailed();
+        return;
+      }
+      // isLocationServiceEnabled skipped: unreliable on Chrome/web.
+      final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      final ll = LatLng(pos.latitude, pos.longitude);
+      setState(() => _userLocation = ll);
+      _mapController.move(ll, 15.0);
+    } catch (_) {
+      if (mounted) _showLocationFailed();
+    }
+  }
+
+  void _showLocationFailed() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFFF9FAFB),
+        elevation: 8,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        duration: const Duration(seconds: 3),
+        content: Row(
+          children: [
+            const Icon(Icons.location_off_rounded, color: AppColors.textSecondary, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Couldn't get your location — showing Haifa",
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textPrimary),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _selectDestination(Destination dest) {
     setState(() => _selectedDestination = dest);
-    _mapController.move(LatLng(dest.latitude, dest.longitude), 14.5);
+    const zoom = 15.5;
+    // Shift camera south so the pin appears in the visible area above the
+    // bottom sheet (initialChildSize 0.48 covers the lower ~48% of the screen).
+    // Target: pin at ~30% from top rather than the full-screen center (50%).
+    final screenH = MediaQuery.of(context).size.height;
+    final offsetPx = screenH * 0.20;
+    final metersPerPx =
+        156543.03392 * cos(dest.latitude * pi / 180) / pow(2, zoom);
+    final latOffsetDeg = offsetPx * metersPerPx / 111320.0;
+    _mapController.move(
+      LatLng(dest.latitude - latOffsetDeg, dest.longitude),
+      zoom,
+    );
   }
 
   void _clearDestination() {
     setState(() => _selectedDestination = null);
-    _mapController.move(const LatLng(32.794, 34.989), 13.5);
+    _mapController.move(
+      _userLocation ?? const LatLng(32.794, 34.989),
+      _userLocation != null ? 15.0 : 13.5,
+    );
   }
 
   void _openDestinationPicker() {
@@ -109,7 +179,10 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
       builder: (_) => _DestinationPicker(
         onSelected: (dest) {
           Navigator.pop(context);
-          _selectDestination(dest);
+          // Wait for modal close animation before moving the camera.
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) _selectDestination(dest);
+          });
         },
       ),
     );
@@ -173,9 +246,21 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
                           _selectedDestination!.latitude,
                           _selectedDestination!.longitude,
                         ),
-                        width: 40,
-                        height: 40,
-                        child: _DestinationPin(),
+                        width: 52,
+                        height: 52,
+                        alignment: Alignment.bottomCenter,
+                        child: const _DestinationPin(),
+                      ),
+                    ],
+                  ),
+                if (_userLocation != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _userLocation!,
+                        width: 24,
+                        height: 24,
+                        child: const _UserLocationDot(),
                       ),
                     ],
                   ),
@@ -213,7 +298,7 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
                       ),
                     ),
                     const Spacer(),
-                    _FloatingIconBtn(icon: Icons.my_location_rounded, onTap: () {}),
+                    _FloatingIconBtn(icon: Icons.my_location_rounded, onTap: _fetchUserLocation),
                     const SizedBox(width: 8),
                     _FloatingIconBtn(icon: Icons.notifications_outlined, onTap: () {}),
                   ],
@@ -343,27 +428,88 @@ class _DestinationBar extends StatelessWidget {
 
 // ── Map pins ──────────────────────────────────────────────────────────────────
 
-class _DestinationPin extends StatelessWidget {
+class _UserLocationDot extends StatelessWidget {
+  const _UserLocationDot();
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 36,
-      height: 36,
+      width: 16,
+      height: 16,
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: const Color(0xFF2563EB),
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
+        border: Border.all(color: Colors.white, width: 2.5),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.4),
+            color: const Color(0xFF2563EB).withValues(alpha: 0.40),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: const Icon(Icons.flag_rounded, size: 16, color: Colors.white),
     );
   }
+}
+
+class _DestinationPin extends StatelessWidget {
+  const _DestinationPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.45),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.14),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.flag_rounded, color: Colors.white, size: 20),
+        ),
+        const CustomPaint(
+          size: Size(14, 8),
+          painter: _PinTipPainter(),
+        ),
+      ],
+    );
+  }
+}
+
+class _PinTipPainter extends CustomPainter {
+  const _PinTipPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, 0)
+        ..lineTo(size.width / 2, size.height)
+        ..lineTo(size.width, 0)
+        ..close(),
+      Paint()
+        ..color = AppColors.primary
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
 class _FloatingIconBtn extends StatelessWidget {
@@ -608,15 +754,59 @@ class _DestinationPicker extends StatefulWidget {
 }
 
 class _DestinationPickerState extends State<_DestinationPicker> {
+  List<PlaceSuggestion> _suggestions = [];
+  bool _isLoading = false;
   String _query = '';
+  Timer? _debounce;
 
-  List<Destination> get _filtered => kHaifaDestinations.where((d) {
-        final q = _query.toLowerCase();
-        return d.name.toLowerCase().contains(q) || d.area.toLowerCase().contains(q);
-      }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _suggestions = PlaceSearchService.predefined('');
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onQueryChanged(String v) {
+    _debounce?.cancel();
+    setState(() => _query = v);
+
+    if (v.length < 2) {
+      setState(() {
+        _suggestions = PlaceSearchService.predefined(v);
+        _isLoading = false;
+      });
+      return;
+    }
+
+    if (PlaceSearchService.hasApiKey) setState(() => _isLoading = true);
+
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final results = await PlaceSearchService.search(v);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = results;
+        _isLoading = false;
+      });
+    });
+  }
+
+  void _select(PlaceSuggestion s) {
+    widget.onSelected(Destination(
+      name: s.title,
+      area: s.subtitle.isNotEmpty ? s.subtitle : 'Haifa',
+      latitude: s.latitude,
+      longitude: s.longitude,
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isApiMode = PlaceSearchService.hasApiKey && _query.length >= 2;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -653,12 +843,25 @@ class _DestinationPickerState extends State<_DestinationPicker> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
               child: TextField(
                 autofocus: true,
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: _onQueryChanged,
                 style: GoogleFonts.inter(fontSize: 15, color: AppColors.textPrimary),
                 decoration: InputDecoration(
-                  hintText: 'Search...',
+                  hintText: 'Search places in Haifa...',
                   hintStyle: GoogleFonts.inter(color: AppColors.textMuted),
                   prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
+                  suffixIcon: _isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(13),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        )
+                      : null,
                   filled: true,
                   fillColor: AppColors.surface,
                   contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -673,42 +876,83 @@ class _DestinationPickerState extends State<_DestinationPicker> {
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  isApiMode ? 'Search results' : 'Quick destinations',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textMuted,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ),
             ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.38,
               ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _filtered.length,
-                itemBuilder: (_, i) {
-                  final dest = _filtered[i];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                    leading: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(11),
+              child: _suggestions.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No places found',
+                          style: GoogleFonts.inter(
+                              fontSize: 14, color: AppColors.textMuted),
+                        ),
                       ),
-                      child: const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 18),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _suggestions.length,
+                      itemBuilder: (_, i) {
+                        final s = _suggestions[i];
+                        return ListTile(
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+                          leading: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: s.provider == 'predefined'
+                                  ? AppColors.primaryLight
+                                  : AppColors.surfaceAlt,
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(
+                              s.provider == 'predefined'
+                                  ? Icons.location_on_rounded
+                                  : Icons.place_rounded,
+                              color: s.provider == 'predefined'
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                              size: 18,
+                            ),
+                          ),
+                          title: Text(
+                            s.title,
+                            style: GoogleFonts.inter(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          subtitle: s.subtitle.isNotEmpty
+                              ? Text(
+                                  s.subtitle,
+                                  style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary),
+                                )
+                              : null,
+                          onTap: () => _select(s),
+                        );
+                      },
                     ),
-                    title: Text(
-                      dest.name,
-                      style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    subtitle: Text(
-                      dest.area,
-                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                    onTap: () => widget.onSelected(dest),
-                  );
-                },
-              ),
             ),
             const SizedBox(height: 20),
           ],
