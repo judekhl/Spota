@@ -54,24 +54,38 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
         _latestReportValue = value;
         _latestReportAt = DateTime.now();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Thanks for your report!'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showToast(context, 'Report submitted', Icons.check_circle_rounded, AppColors.primary);
     } catch (e) {
       debugPrint('Report submit error: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not submit report. Please try again.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showToast(context, 'Could not submit. Try again.', Icons.error_outline_rounded, AppColors.closed);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  void _showToast(BuildContext ctx, String message, IconData icon, Color iconColor) {
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFFF9FAFB),
+        elevation: 12,
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        duration: const Duration(seconds: 2),
+        content: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              message,
+              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _reportLabel(String value) => switch (value) {
@@ -294,12 +308,13 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                     color: const Color(0xFF05C4EF),
                     onTap: _openWaze,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   _DirectionButton(
                     label: 'Open in Google Maps',
                     badge: 'G',
                     color: const Color(0xFF4285F4),
                     onTap: _openGoogleMaps,
+                    outlined: true,
                   ),
                 ] else
                   Text(
@@ -334,11 +349,6 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                   style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 14),
-                Text(
-                  'What do you see right now?',
-                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 10),
                 _ReportGrid(submitting: _submitting, onReport: _submitReport),
                 if (_latestReportValue != null && _latestReportAt != null) ...[
                   const SizedBox(height: 10),
@@ -557,20 +567,29 @@ class _DirectionButton extends StatelessWidget {
   final String badge;
   final Color color;
   final VoidCallback onTap;
-  const _DirectionButton({required this.label, required this.badge, required this.color, required this.onTap});
+  final bool outlined;
+
+  const _DirectionButton({
+    required this.label,
+    required this.badge,
+    required this.color,
+    required this.onTap,
+    this.outlined = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 56,
+        height: outlined ? 50 : 58,
         decoration: BoxDecoration(
-          color: color,
+          color: outlined ? Colors.white : color,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(color: color.withValues(alpha: 0.32), blurRadius: 14, offset: const Offset(0, 5)),
-          ],
+          border: outlined ? Border.all(color: color, width: 1.5) : null,
+          boxShadow: outlined
+              ? null
+              : [BoxShadow(color: color.withValues(alpha: 0.30), blurRadius: 14, offset: const Offset(0, 5))],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -579,15 +598,31 @@ class _DirectionButton extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.22),
+                color: outlined
+                    ? color.withValues(alpha: 0.10)
+                    : Colors.white.withValues(alpha: 0.22),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Center(
-                child: Text(badge, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                child: Text(
+                  badge,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: outlined ? color : Colors.white,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 12),
-            Text(label, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: outlined ? 14 : 15,
+                fontWeight: FontWeight.w600,
+                color: outlined ? color : Colors.white,
+              ),
+            ),
           ],
         ),
       ),

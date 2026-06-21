@@ -288,14 +288,25 @@ class _DestinationBar extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                selected?.name ?? 'Where are you going?',
-                style: GoogleFonts.inter(
-                  fontSize: 15,
-                  color: selected == null ? AppColors.textMuted : AppColors.textPrimary,
-                  fontWeight: selected == null ? FontWeight.normal : FontWeight.w600,
-                ),
-              ),
+              child: selected == null
+                  ? Text(
+                      'Where are you going?',
+                      style: GoogleFonts.inter(fontSize: 15, color: AppColors.textMuted),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          selected!.name,
+                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        ),
+                        Text(
+                          selected!.area,
+                          style: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
             ),
             if (selected != null)
               GestureDetector(

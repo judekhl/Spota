@@ -19,6 +19,12 @@ class ParkingLotCard extends StatelessWidget {
     this.matchLabelColor = AppColors.primary,
   });
 
+  static IconData _iconForLabel(String label) {
+    if (label == 'Verified') return Icons.verified_rounded;
+    if (label == 'Demo data') return Icons.warning_amber_rounded;
+    return Icons.star_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -48,7 +54,7 @@ class ParkingLotCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                      Icon(_iconForLabel(matchLabel!), size: 12, color: Colors.white),
                       const SizedBox(width: 5),
                       Text(
                         matchLabel!,
@@ -79,7 +85,7 @@ class _CardImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 154,
+      height: 128,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -204,9 +210,9 @@ class _CardContent extends StatelessWidget {
                 ),
               const Spacer(),
               ConfidenceBadge(confidence: lot.confidence, small: true),
-              const SizedBox(width: 6),
-              const Icon(Icons.update_rounded, size: 13, color: AppColors.textMuted),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
+              Text('·', style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted)),
+              const SizedBox(width: 8),
               Text(
                 lot.lastUpdated,
                 style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
@@ -267,13 +273,13 @@ class _ImageFallback extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 52,
-              height: 52,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.local_parking_rounded, color: Colors.white, size: 28),
+              child: const Icon(Icons.local_parking_rounded, color: Colors.white, size: 22),
             ),
             const SizedBox(height: 8),
             Text(
