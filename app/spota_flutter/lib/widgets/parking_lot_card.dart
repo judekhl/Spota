@@ -8,8 +8,16 @@ import 'status_badge.dart';
 class ParkingLotCard extends StatelessWidget {
   final ParkingLot lot;
   final VoidCallback onTap;
+  final String? matchLabel;
+  final Color matchLabelColor;
 
-  const ParkingLotCard({super.key, required this.lot, required this.onTap});
+  const ParkingLotCard({
+    super.key,
+    required this.lot,
+    required this.onTap,
+    this.matchLabel,
+    this.matchLabelColor = AppColors.primary,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +40,28 @@ class ParkingLotCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (matchLabel != null)
+                Container(
+                  width: double.infinity,
+                  color: matchLabelColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_rounded, size: 12, color: Colors.white),
+                      const SizedBox(width: 5),
+                      Text(
+                        matchLabel!,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               _CardImage(lot: lot),
               _CardContent(lot: lot),
             ],
