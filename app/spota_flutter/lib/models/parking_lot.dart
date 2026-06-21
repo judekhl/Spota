@@ -26,6 +26,11 @@ class ParkingLot {
   final String imageUrl;
   final String lastUpdated;
   final DateTime? updatedAt;
+  final String? openingHoursText;
+  final String? phone;
+  final String? sourceUrl;
+  final String? dataSource;
+  final String? verifiedStatus;
 
   const ParkingLot({
     required this.id,
@@ -43,7 +48,15 @@ class ParkingLot {
     required this.imageUrl,
     required this.lastUpdated,
     this.updatedAt,
+    this.openingHoursText,
+    this.phone,
+    this.sourceUrl,
+    this.dataSource,
+    this.verifiedStatus,
   });
+
+  bool get isVerified => verifiedStatus == 'verified';
+  bool get isDemo     => verifiedStatus == 'demo';
 
   LotStatus get status {
     if (!isOpen) return LotStatus.closed;

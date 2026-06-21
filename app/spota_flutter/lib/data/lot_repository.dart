@@ -39,6 +39,11 @@ abstract final class LotRepository {
       imageUrl: '',
       lastUpdated: _timeAgo(r['updated_at'] as String?),
       updatedAt: updatedAt,
+      openingHoursText: r['opening_hours_text'] as String?,
+      phone: r['phone'] as String?,
+      sourceUrl: r['source_url'] as String?,
+      dataSource: r['data_source'] as String?,
+      verifiedStatus: r['verified_status'] as String?,
     );
   }
 

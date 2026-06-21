@@ -144,7 +144,30 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StatusBadge(status: lot.status, large: true),
+                          Row(
+                            children: [
+                              StatusBadge(status: lot.status, large: true),
+                              if (lot.isVerified) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.verified_rounded, size: 11, color: Colors.white),
+                                      const SizedBox(width: 4),
+                                      Text('Verified', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                           const SizedBox(height: 10),
                           Text(
                             lot.name,
@@ -182,6 +205,32 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 48),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                // Demo data warning
+                if (lot.isDemo) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFF59E0B)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Demo data — coordinates not verified for real navigation',
+                            style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF92400E)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
                 // KPI row
                 Row(
                   children: [
@@ -263,9 +312,11 @@ class _ParkingLotDetailsScreenState extends State<ParkingLotDetailsScreen> {
                 const SizedBox(height: 22),
 
                 // Info tiles
-                _InfoTile(icon: Icons.access_time_rounded, label: 'Hours',        value: lot.openHours),
+                _InfoTile(icon: Icons.access_time_rounded, label: 'Hours',        value: lot.openingHoursText ?? lot.openHours),
                 _InfoTile(icon: Icons.near_me_rounded,     label: 'Distance',     value: '${lot.distanceLabel} away'),
                 _InfoTile(icon: Icons.update_rounded,      label: 'Last updated', value: lot.lastUpdated),
+                if (lot.phone != null)
+                  _InfoTile(icon: Icons.phone_outlined, label: 'Phone', value: lot.phone!),
                 _ConfidenceTile(confidence: lot.confidence),
 
                 const SizedBox(height: 28),
