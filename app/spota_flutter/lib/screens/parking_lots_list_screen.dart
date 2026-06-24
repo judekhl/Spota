@@ -28,6 +28,8 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
   Destination? _selectedDestination;
   LatLng? _userLocation;
   final MapController _mapController = MapController();
+  double? _compassHeading;
+  StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
@@ -45,6 +47,7 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
 
   @override
   void dispose() {
+    _positionStream?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -117,8 +120,32 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
       final ll = LatLng(pos.latitude, pos.longitude);
       setState(() => _userLocation = ll);
       _mapController.move(ll, 15.0);
+      if (_positionStream == null) _startHeadingStream();
     } catch (_) {
       if (mounted) _showLocationFailed();
+    }
+  }
+
+  void _startHeadingStream() {
+    // Subscribe to position stream for compass heading updates.
+    // On web/desktop, pos.heading is NaN or -1 when unavailable — those are
+    // silently ignored and the compass stays at the static north indicator.
+    try {
+      _positionStream = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 1,
+        ),
+      ).listen(
+        (pos) {
+          if (!mounted) return;
+          final h = pos.heading;
+          if (!h.isNaN && h >= 0) setState(() => _compassHeading = h);
+        },
+        onError: (_) {},
+      );
+    } catch (_) {
+      // Heading sensor unavailable on this platform — compass stays at north.
     }
   }
 
@@ -152,10 +179,10 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
     setState(() => _selectedDestination = dest);
     const zoom = 15.5;
     // Shift camera south so the pin appears in the visible area above the
-    // bottom sheet (initialChildSize 0.48 covers the lower ~48% of the screen).
-    // Target: pin at ~30% from top rather than the full-screen center (50%).
+    // bottom sheet (initialChildSize 0.26 covers the lower ~26% of the screen).
+    // Target: pin at ~37% from top rather than the full-screen center (50%).
     final screenH = MediaQuery.of(context).size.height;
-    final offsetPx = screenH * 0.20;
+    final offsetPx = screenH * 0.13;
     final metersPerPx =
         156543.03392 * cos(dest.latitude * pi / 180) / pow(2, zoom);
     final latOffsetDeg = offsetPx * metersPerPx / 111320.0;
@@ -300,7 +327,7 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
                       ),
                     ),
                     const Spacer(),
-                    _FloatingIconBtn(icon: Icons.my_location_rounded, onTap: _fetchUserLocation),
+                    _FloatingIconBtn(icon: Icons.settings_rounded, onTap: () {}),
                     const SizedBox(width: 8),
                     _FloatingIconBtn(icon: Icons.notifications_outlined, onTap: () {}),
                   ],
@@ -315,13 +342,26 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
             ),
           ),
 
+          // Right-side floating controls: compass + my-location
+          Positioned(
+            top: topPad + 132,
+            right: 16,
+            child: Column(
+              children: [
+                _CompassBtn(heading: _compassHeading),
+                const SizedBox(height: 8),
+                _FloatingIconBtn(icon: Icons.my_location_rounded, onTap: _fetchUserLocation),
+              ],
+            ),
+          ),
+
           // Draggable bottom sheet with lot list
           DraggableScrollableSheet(
-            initialChildSize: 0.48,
+            initialChildSize: 0.26,
             minChildSize: 0.13,
             maxChildSize: 0.93,
             snap: true,
-            snapSizes: const [0.13, 0.48, 0.93],
+            snapSizes: const [0.13, 0.26, 0.93],
             builder: (_, controller) => _LotSheet(
               controller: controller,
               lots: displayedLots,
@@ -542,6 +582,84 @@ class _FloatingIconBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CompassBtn extends StatelessWidget {
+  final double? heading;
+  const _CompassBtn({this.heading});
+
+  @override
+  Widget build(BuildContext context) {
+    // heading null → no sensor data → needle stays pointing north (angle 0)
+    final angle = heading != null ? -(heading! * pi / 180) : 0.0;
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.11),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Transform.rotate(
+        angle: angle,
+        child: CustomPaint(
+          size: const Size(42, 42),
+          painter: _CompassPainter(active: heading != null),
+        ),
+      ),
+    );
+  }
+}
+
+class _CompassPainter extends CustomPainter {
+  final bool active;
+  const _CompassPainter({required this.active});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final arrowH = size.height * 0.33;
+    final arrowW = size.width * 0.10;
+
+    // North half — red when live heading is available, muted when static
+    canvas.drawPath(
+      Path()
+        ..moveTo(cx, cy - arrowH)
+        ..lineTo(cx - arrowW, cy)
+        ..lineTo(cx + arrowW, cy)
+        ..close(),
+      Paint()
+        ..color = active ? const Color(0xFFDC2626) : const Color(0xFFD1D5DB)
+        ..style = PaintingStyle.fill,
+    );
+    // South half — always muted grey
+    canvas.drawPath(
+      Path()
+        ..moveTo(cx, cy + arrowH)
+        ..lineTo(cx - arrowW, cy)
+        ..lineTo(cx + arrowW, cy)
+        ..close(),
+      Paint()
+        ..color = const Color(0xFFD1D5DB)
+        ..style = PaintingStyle.fill,
+    );
+    // Centre pivot dot
+    canvas.drawCircle(
+      Offset(cx, cy),
+      2.5,
+      Paint()..color = const Color(0xFF9CA3AF),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CompassPainter old) => old.active != active;
 }
 
 class _MapPin extends StatelessWidget {
