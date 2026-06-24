@@ -10,6 +10,8 @@ class ParkingLotCard extends StatelessWidget {
   final VoidCallback onTap;
   final String? matchLabel;
   final Color matchLabelColor;
+  final String? distanceText;
+  final String? walkingText;
 
   const ParkingLotCard({
     super.key,
@@ -17,6 +19,8 @@ class ParkingLotCard extends StatelessWidget {
     required this.onTap,
     this.matchLabel,
     this.matchLabelColor = AppColors.primary,
+    this.distanceText,
+    this.walkingText,
   });
 
   static IconData _iconForLabel(String label) {
@@ -68,7 +72,7 @@ class ParkingLotCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              _CardImage(lot: lot),
+              _CardImage(lot: lot, distanceText: distanceText, walkingText: walkingText),
               _CardContent(lot: lot),
             ],
           ),
@@ -80,7 +84,9 @@ class ParkingLotCard extends StatelessWidget {
 
 class _CardImage extends StatelessWidget {
   final ParkingLot lot;
-  const _CardImage({required this.lot});
+  final String? distanceText;
+  final String? walkingText;
+  const _CardImage({required this.lot, this.distanceText, this.walkingText});
 
   @override
   Widget build(BuildContext context) {
@@ -115,29 +121,31 @@ class _CardImage extends StatelessWidget {
             right: 12,
             child: StatusBadge(status: lot.status),
           ),
-          // Distance chip — top left
-          Positioned(
-            top: 12,
-            left: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.near_me_rounded, size: 11, color: Colors.white),
-                  const SizedBox(width: 4),
-                  Text(
-                    lot.distanceLabel,
-                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.white),
-                  ),
-                ],
+          if (distanceText != null)
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.42),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.near_me_rounded, size: 11, color: Colors.white),
+                    const SizedBox(width: 4),
+                    Text(
+                      walkingText != null
+                          ? '$distanceText · $walkingText'
+                          : distanceText!,
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.white),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

@@ -84,13 +84,15 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
         DataConfidence.unknown         => 0.0,
       };
 
+      final isFull = l.isOpen && l.availableSpaces == 0;
       return 100.0
-          - 20.0 * dist                  // distance is dominant: 1 km = −20 pts
-          + (l.isVerified ? 8.0 : 0.0)  // trust boost ≈ 0.4 km equivalent
-          - (l.isDemo ? 5.0 : 0.0)      // demo penalty ≈ 0.25 km equivalent
-          + (l.isOpen ? 20.0 : -20.0)   // open/closed: large split
-          + 8.0 * availRatio             // availability: up to +8
-          + confBonus;                   // data freshness: up to +5
+          - 20.0 * dist                   // distance: 1 km = −20 pts
+          + (l.isVerified ? 8.0 : 0.0)   // trust boost
+          - (l.isDemo ? 5.0 : 0.0)       // demo penalty
+          + (l.isOpen ? 20.0 : -20.0)    // open/closed: large split
+          - (isFull ? 40.0 : 0.0)        // full lot: strong penalty (≈ 2 km disadvantage)
+          + 8.0 * availRatio              // availability: up to +8
+          + confBonus;                    // data freshness: up to +5
     }
 
     final sorted = [...lots];
@@ -325,6 +327,7 @@ class _ParkingLotsListScreenState extends State<ParkingLotsListScreen> {
               lots: displayedLots,
               loading: _loading,
               destination: _selectedDestination,
+              userLocation: _userLocation,
             ),
           ),
         ],
@@ -575,6 +578,24 @@ class _MapPin extends StatelessWidget {
   }
 }
 
+// ── Distance / walking-time helpers ──────────────────────────────────────────
+
+double _lotDistKm(ParkingLot lot, double refLat, double refLon) {
+  final dlat = (lot.latitude - refLat) * 111.0;
+  final dlon = (lot.longitude - refLon) * 94.0;
+  return sqrt(dlat * dlat + dlon * dlon);
+}
+
+String _formatDist(double km) {
+  if (km < 1.0) return '${(km * 1000).round()} m';
+  return '${km.toStringAsFixed(1)} km';
+}
+
+String _formatWalk(double km) {
+  final mins = max(1, (km / 5.0 * 60).round());
+  return '$mins min walk';
+}
+
 // ── Bottom sheet ──────────────────────────────────────────────────────────────
 
 class _LotSheet extends StatelessWidget {
@@ -582,12 +603,14 @@ class _LotSheet extends StatelessWidget {
   final List<ParkingLot> lots;
   final bool loading;
   final Destination? destination;
+  final LatLng? userLocation;
 
   const _LotSheet({
     required this.controller,
     required this.lots,
     required this.loading,
     this.destination,
+    this.userLocation,
   });
 
   @override
@@ -630,7 +653,7 @@ class _LotSheet extends StatelessWidget {
                           Text(
                             destination == null
                                 ? 'Parking near you'
-                                : 'Near ${destination!.name}',
+                                : 'Parking near ${destination!.name}',
                             style: GoogleFonts.inter(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -638,15 +661,11 @@ class _LotSheet extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on_rounded, size: 14, color: AppColors.primary),
-                              const SizedBox(width: 3),
-                              Text(
-                                destination == null ? 'Haifa, Israel' : destination!.area,
-                                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
-                              ),
-                            ],
+                          Text(
+                            destination == null
+                                ? 'Sorted by availability and trust'
+                                : 'Sorted by distance, availability, and trust',
+                            style: GoogleFonts.inter(fontSize: 13, color: AppColors.textSecondary),
                           ),
                         ],
                       ),
@@ -702,31 +721,50 @@ class _LotSheet extends StatelessWidget {
                     if (i.isOdd) return const SizedBox(height: 14);
                     final idx = i ~/ 2;
                     final lot = lots[idx];
+
+                    final bool hasCoords = lot.latitude != 0.0 && lot.longitude != 0.0;
+                    final double? refLat = destination?.latitude ?? userLocation?.latitude;
+                    final double? refLon = destination?.longitude ?? userLocation?.longitude;
+
+                    String? distText;
+                    String? walkText;
+                    double? distKm;
+                    if (hasCoords && refLat != null && refLon != null) {
+                      distKm = _lotDistKm(lot, refLat, refLon);
+                      distText = _formatDist(distKm);
+                      if (destination != null) walkText = _formatWalk(distKm);
+                    }
+
                     String? matchLabel;
                     Color matchLabelColor = AppColors.primary;
-                    if (destination != null && idx == 0) {
-                      // "Best match" only when: has coords, within 2 km, AND
-                      // not demo (demo lots must always show their warning label).
-                      final hasC = lot.latitude != 0.0 && lot.longitude != 0.0;
-                      if (hasC && !lot.isDemo) {
-                        final dlat = (lot.latitude - destination!.latitude) * 111.0;
-                        final dlon = (lot.longitude - destination!.longitude) * 94.0;
-                        final dist = sqrt(dlat * dlat + dlon * dlon);
-                        if (dist <= 2.0) matchLabel = 'Best match';
+                    if (lot.isDemo) {
+                      matchLabel = 'Demo data';
+                      matchLabelColor = AppColors.limited;
+                    } else if (destination != null) {
+                      if (hasCoords && distKm != null) {
+                        if (idx == 0) {
+                          final isFull = lot.isOpen && lot.availableSpaces == 0;
+                          if (isFull) {
+                            matchLabel = 'Closest option';
+                          } else {
+                            matchLabel = distKm <= 2.0 ? 'Best match' : 'Closest available';
+                          }
+                        } else if (lot.isVerified) {
+                          matchLabel = 'Farther but verified';
+                        }
+                      } else if (lot.isVerified) {
+                        matchLabel = 'Farther but verified';
                       }
+                    } else if (lot.isVerified) {
+                      matchLabel = 'Verified';
                     }
-                    if (matchLabel == null) {
-                      if (lot.isVerified) {
-                        matchLabel = 'Verified';
-                      } else if (lot.isDemo) {
-                        matchLabel = 'Demo data';
-                        matchLabelColor = AppColors.limited;
-                      }
-                    }
+
                     return ParkingLotCard(
                       lot: lot,
                       matchLabel: matchLabel,
                       matchLabelColor: matchLabelColor,
+                      distanceText: distText,
+                      walkingText: walkText,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => ParkingLotDetailsScreen(lot: lot)),
